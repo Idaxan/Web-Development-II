@@ -6,6 +6,36 @@ const data = JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// middleware 
+const readData = () => {
+    return JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }));
+};
+
+const ProductExists = (req, res, next) => {
+    const data = readData();
+    const { id } = req.params;
+    const product = data.products.find(p => p.id == id);
+
+    if (!product) {
+        return res.status(404).json({ error: "Product not found" });
+    }
+    
+    req.product = product;
+    req.allData = data;
+    next();
+}; 
+
+const validatePayload = (req, res, next) => {
+    const { name, price, category } = req.body;
+    
+    if (!name || !price || !category) {
+        return res.status(400).json({ 
+            error: "Missing required fields: name, price, and category are mandatory." 
+        });
+    }
+    next();
+};
+
 
 app.get("/products", (req, res) => {
     const { category, subcategory, search } = req.query;
@@ -34,7 +64,11 @@ app.get("/products", (req, res) => {
     res.json(filteredProducts);
 });
 
-app.post("/products", (req, res) => {
+app.get("/products/:id", ProductExists, (req, res) => {
+    res.json(req.product);
+});
+
+app.post("/products", validatePayload, (req, res) => {
     const filedata = JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }));
     const {body} = req;
     filedata.products.push(body);
@@ -52,7 +86,7 @@ app.post("/products", (req, res) => {
     res.json(body);
 });
 
-app.put("/products/:id", (req, res) => {
+app.put("/products/:id", validatePayload, ProductExists, (req, res) => {
     const filedata = JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }));
     const { id } = req.params;
     const { body } = req;
@@ -67,7 +101,12 @@ app.put("/products/:id", (req, res) => {
     res.json({ message: "Product updated successfully" });
 });
 
-
-
+app.delete("/products/:id", ProductExists, (req, res) => {
+    const data = req.allData;
+    data.products = data.products.filter(p => p.id != req.params.id);
+    
+    writeData(data);
+    res.status(204).send();
+});
 
 app.listen(9000, () => console.log("Server running on port 9000"));
