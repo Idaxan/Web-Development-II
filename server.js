@@ -52,6 +52,16 @@ const product = conn.define("product", {
     }
 });
 
+const subcategory = conn.define("subcategory", {
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false
+    }
+});
+
+subcategory.belongsTo(category, { foreignKey: "categoryId" });
+category.hasMany(subcategory, { foreignKey: "categoryId" });
+
 conn.sync({ force: true }).then(() => {
     console.log("Database & tables created!");
 
