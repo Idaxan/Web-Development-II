@@ -18,17 +18,19 @@ const connectDB = async () => {
     }
 };
 
-const category = conn.define("category", {
+const Category = conn.define("category", {
     name: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: false,
+        unique: true
     }
 });
 
 const product = conn.define("product", {
     name: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: false,
+        unique: true
     },
     price:{
         type: DataTypes.DOUBLE.UNSIGNED,
@@ -55,20 +57,32 @@ const product = conn.define("product", {
 const subcategory = conn.define("subcategory", {
     name: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: false,
+        unique : true
     }
 });
 
-subcategory.belongsTo(category, { foreignKey: "categoryId" });
-category.hasMany(subcategory, { foreignKey: "categoryId" });
+// Define associations
+subcategory.belongsTo(Category, { foreignKey: "categoryId" });
+Category.hasMany(subcategory, { foreignKey: "categoryId" });
 
-conn.sync({ force: true }).then(() => {
+product.belongsTo(Category, { foreignKey: "categoryId" });
+Category.hasMany(product,{foreignKey: "categoryId"});
+
+async function FillingDataCategories(){
+    const { products } = JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }));
+    let categories = [...new Set(products.map(product => product.category))];
+    const categorySorted = categories.sort();
+    for ( const category of categorySorted) {
+       await Category.create({ name: category });
+    }
+
+}
+
+conn.sync({ alter: true }).then(() => {
     console.log("Database & tables created!");
-
-
-
-product.belongsTo(category, { foreignKey: "categoryId" });
-category.hasMany(product,{foreignKey: "categoryId"});
+    
+FillingDataCategories();
 
 connectDB();
 
