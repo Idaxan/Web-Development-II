@@ -2,6 +2,65 @@ const express = require("express");
 const app = express();
 const fs = require("fs");
 const data = JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }));
+const { Sequelize, DataTypes } = require("sequelize");
+
+const conn = new Sequelize("products_inventory", "root", "root", {
+    host: "localhost",
+    dialect: "mysql"
+});
+
+const connectDB = async () => {
+    try {
+        await conn.authenticate();
+        console.log("Connection has been established successfully.");
+    } catch (error) {
+        console.error("Unable to connect to the database:", error);
+    }
+};
+
+const category = conn.define("category", {
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false
+    }
+});
+
+const product = conn.define("product", {
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    price:{
+        type: DataTypes.DOUBLE.UNSIGNED,
+        allowNull: false,
+        defaultValue: 0.0
+    },
+    currency:{
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "USD"
+    },
+    stock:{
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        defaultValue: 0
+    },
+    rating:{
+        type: DataTypes.FLOAT.UNSIGNED,
+        allowNull: false,
+        defaultValue: 1.0
+    }
+});
+
+conn.sync({ force: true }).then(() => {
+    console.log("Database & tables created!");
+
+
+
+product.belongsTo(category, { foreignKey: "categoryId" });
+category.hasMany(product,{foreignKey: "categoryId"});
+
+connectDB();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -10,6 +69,7 @@ app.use(express.urlencoded({ extended: true }));
 const readData = () => {
     return JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }));
 };
+
 
 const ProductExists = (req, res, next) => {
     const data = readData();
@@ -109,4 +169,4 @@ app.delete("/products/:id", ProductExists, (req, res) => {
     res.status(204).send();
 });
 
-app.listen(9000, () => console.log("Server running on port 9000"));
+app.listen(9000, () => console.log("Server running on port 9000"));});
