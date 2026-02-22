@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const fs = require("fs");
 const data = JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }));
-const { Sequelize, DataTypes } = require("sequelize");
+const { Sequelize, DataTypes, Op} = require("sequelize");
 
 const conn = new Sequelize("products_inventory", "root", "root", {
     host: "localhost",
@@ -23,6 +23,14 @@ const Category = conn.define("category", {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true
+    }
+});
+
+const subcategory = conn.define("subcategory", {
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique : true
     }
 });
 
@@ -54,13 +62,73 @@ const product = conn.define("product", {
     }
 });
 
-const subcategory = conn.define("subcategory", {
-    name: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique : true
+
+
+
+// crud sequelize
+app.use(express.json());
+
+// get all products
+
+app.get("/productDB", async (req, res) => {
+    // Hemos quitado 'subcategory' temporalmente por la limitación de la base de datos
+    const { category, search } = req.query; 
+    let whereClause = {};
+
+    if (category) {
+        whereClause.categoryId = await FindCategoryId(category);
+    }
+    if (search) {
+        whereClause.name = { [Sequelize.Op.like]: `%${search}%` };
+    }
+
+    const products = await product.findAll({ where: whereClause });
+    res.json(products);
+});
+
+// create
+app.post("/productDB", async (req, res) => {
+    try {
+        const { name, price, currency, stock, rating, categoryId } = req.body;
+        const newProduct = await product.create({ name, price, currency, stock, rating, categoryId });
+        res.status(201).json(newProduct);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
+
+// update
+app.put("/productDB/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, price, currency, stock, rating, categoryId } = req.body;
+        const [updated] = await product.update({ name, price, currency, stock, rating, categoryId }, { where: { id } });
+        if (updated) {
+            res.json({ message: "Product updated successfully" });
+        } else {
+            res.status(404).json({ error: "Product not found" });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// delete
+app.delete("/productDB/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const deleted = await product.destroy({ where: { id } });
+        if (deleted) {
+            res.json({ message: "Product deleted successfully" });
+        } else {
+            res.status(404).json({ error: "Product not found" });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
 
 // Define associations
 subcategory.belongsTo(Category, { foreignKey: "categoryId" });
@@ -69,24 +137,72 @@ Category.hasMany(subcategory, { foreignKey: "categoryId" });
 product.belongsTo(Category, { foreignKey: "categoryId" });
 Category.hasMany(product,{foreignKey: "categoryId"});
 
-async function FillingDataCategories(){
+async function FillInCategories(){
     const { products } = JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }));
     let categories = [...new Set(products.map(product => product.category))];
     const categorySorted = categories.sort();
     for ( const category of categorySorted) {
        await Category.create({ name: category });
     }
-
 }
 
-conn.sync({ alter: true }).then(() => {
-    console.log("Database & tables created!");
+async function FillInSubCategories(){
+    const { products } = JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }));
+    const subcategories = new Map();
+    for (const product of products) {
+        subcategories.set(product.subcategory, product.category);
+    }
+    console.log(subcategories);
+    for (const subCategory of subcategories) {
+        await subcategory.create({
+            name: subCategory[0],
+            categoryId: (await Category.findOne({ where: { name: subCategory[1] } }))?.id
+        });
+    }
+}
+
+function FindCategoryId(categoryName) {
+    return Category.findOne({ where: { name: categoryName } })
+        .then(category => category ? category.id : null)
+        .catch(error => {
+            console.error("Error finding category:", error);
+            return null;
+        });
+}
+
+async function FillInProducts(){
+    const { products } = JSON.parse(fs.readFileSync("./products.json", { encoding: "utf-8" }));
+    for (const productData of products) {
+        const category = await Category.findOne({ where: { name: productData.category } });
+        if (category) {
+            await product.create({
+                id: productData.id,
+                name: productData.name,
+                price: productData.price,
+                currency: productData.currency,
+                stock: productData.stock,
+                rating: productData.rating,
+                categoryId: await FindCategoryId(productData.category)
+            });
+        }
+    }
+}
+
+async function AppInit() {
+    await connectDB(); // 1. Conectar a la BD
     
-FillingDataCategories();
+    await conn.sync({ alter: true }); // 2. Esperar a que se creen las tablas
+    console.log("Database & tables created!");
 
-connectDB();
+    console.log("Llenando base de datos...");
+    await FillInCategories();    // Categorías primero (son los "padres")
+    await FillInSubCategories(); // Subcategorías después
+    await FillInProducts();      // Productos de último
+    console.log("Base de datos llena!");
+}
 
-app.use(express.json());
+// AppInit(); 
+
 app.use(express.urlencoded({ extended: true }));
 
 // middleware 
@@ -193,4 +309,4 @@ app.delete("/products/:id", ProductExists, (req, res) => {
     res.status(204).send();
 });
 
-app.listen(9000, () => console.log("Server running on port 9000"));});
+app.listen(9000, () => console.log("Server running on port 9000"));
