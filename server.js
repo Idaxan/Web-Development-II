@@ -201,7 +201,7 @@ async function AppInit() {
     console.log("Base de datos llena!");
 }
 
-// AppInit(); 
+
 
 app.use(express.urlencoded({ extended: true }));
 
@@ -310,3 +310,4 @@ app.delete("/products/:id", ProductExists, (req, res) => {
 });
 
 app.listen(9000, () => console.log("Server running on port 9000"));
+// AppInit();  
